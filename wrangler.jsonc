@@ -10,14 +10,15 @@
   "d1_databases": [
     {
       "binding": "DB",
-      "database_name": "YOUR_DBNAME",
-      "database_id": "YOUR_DBID"
+      "database_name": "hostnames-db",
+      "database_id": "1935fc0f-0801-450f-a006-6b48462b5e43"
     }
   ],
   "vars": {
     "ENABLE_EXPORT": "true",
     "ENABLE_UPDATE": "true",
-    "CF_API_TOKEN": "YOUR_CF_API_TOKEN",
-    "ZONE_ID": "YOUR ZONE_ID"
+    "CF_API_TOKEN": "v8gA0-75iLeBoSPoQ8yi-GH1vUYsjOCFVr2XnofB",
+    "ZONE_ID": "584a10b592f9cc465b7455e517f5f935"
+  
   }
 }

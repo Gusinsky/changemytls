@@ -113,7 +113,7 @@ async function exportCustomHostnames(env: Env): Promise<any> {
   const perPage = 50; // Cloudflare API default
 
   while (true) {
-    const response = await fetch(
+    const response = await makeApiRequest(
       `https://api.cloudflare.com/client/v4/zones/${env.ZONE_ID}/custom_hostnames?page=${page}&per_page=${perPage}`,
       {
         headers: {
@@ -164,6 +164,8 @@ async function exportCustomHostnames(env: Env): Promise<any> {
     }
 
     page++;
+    // Add delay between pages to avoid rate limits
+    await new Promise(resolve => setTimeout(resolve, 500));
   }
 
   return {
@@ -175,12 +177,12 @@ async function exportCustomHostnames(env: Env): Promise<any> {
 }
 
 async function updateMinTlsVersion(env: Env): Promise<any> {
-  // Get all hostnames that need TLS version update
+  // Get all hostnames that need TLS version update (reduced batch size)
   const { results } = await env.DB.prepare(`
     SELECT id, hostname, min_tls_version 
     FROM custom_hostnames 
     WHERE needs_update = 1 
-    LIMIT 100
+    LIMIT 20
   `).all();
 
   if (!results || results.length === 0) {
@@ -196,7 +198,7 @@ async function updateMinTlsVersion(env: Env): Promise<any> {
   for (const record of results) {
     try {
       // Update min TLS version via Cloudflare API
-      const response = await fetch(
+      const response = await makeApiRequest(
         `https://api.cloudflare.com/client/v4/zones/${env.ZONE_ID}/custom_hostnames/${record.id}`,
         {
           method: 'PATCH',
@@ -232,6 +234,9 @@ async function updateMinTlsVersion(env: Env): Promise<any> {
     } catch (error) {
       errors.push(`${record.hostname}: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
+    
+    // Add delay between updates to avoid rate limits
+    await new Promise(resolve => setTimeout(resolve, 1000));
   }
 
   return {
@@ -240,4 +245,37 @@ async function updateMinTlsVersion(env: Env): Promise<any> {
     errors: errors.length > 0 ? errors : undefined,
     timestamp: new Date().toISOString()
   };
+}
+
+// Helper function to handle API requests with rate limiting
+async function makeApiRequest(url: string, options: RequestInit, maxRetries = 3): Promise<Response> {
+  let retries = 0;
+  
+  while (retries <= maxRetries) {
+    const response = await fetch(url, options);
+    
+    // Handle rate limiting
+    if (response.status === 429) {
+      const retryAfter = response.headers.get('Retry-After');
+      const delay = retryAfter ? parseInt(retryAfter) * 1000 : Math.pow(2, retries) * 1000;
+      
+      console.log(`Rate limited. Waiting ${delay}ms before retry ${retries + 1}/${maxRetries}`);
+      await new Promise(resolve => setTimeout(resolve, delay));
+      retries++;
+      continue;
+    }
+    
+    // Handle other server errors with exponential backoff
+    if (response.status >= 500 && retries < maxRetries) {
+      const delay = Math.pow(2, retries) * 1000;
+      console.log(`Server error ${response.status}. Waiting ${delay}ms before retry ${retries + 1}/${maxRetries}`);
+      await new Promise(resolve => setTimeout(resolve, delay));
+      retries++;
+      continue;
+    }
+    
+    return response;
+  }
+  
+  throw new Error(`Max retries (${maxRetries}) exceeded`);
 }
