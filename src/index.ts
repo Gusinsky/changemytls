@@ -178,10 +178,12 @@ async function exportCustomHostnames(env: Env): Promise<any> {
 
 async function updateMinTlsVersion(env: Env): Promise<any> {
   // Get all hostnames that need TLS version update (reduced batch size)
+  // Order by hostname to ensure consistent processing order for resumability
   const { results } = await env.DB.prepare(`
     SELECT id, hostname, min_tls_version 
     FROM custom_hostnames 
     WHERE needs_update = 1 
+    ORDER BY hostname ASC
     LIMIT 20
   `).all();
 
